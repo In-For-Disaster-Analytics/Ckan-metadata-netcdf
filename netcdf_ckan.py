@@ -394,10 +394,25 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
     for file_path in netcdf_files:
         # Extract year from filename (assumes format like *_YYYY.nc)
         filename = file_path.stem
-        # Look for 4-digit year in filename
-        year_matches = re.findall(r'\b(19|20)\d{2}\b', filename)
-        if year_matches:
-            years.append(int(year_matches[-1]))  # Take the last 4-digit number as year
+
+        # Debug: print what we're trying to parse
+        print(f"   🔍 Extracting year from: {filename}")
+
+        # Try the same pattern as in hierarchy organization
+        pattern1 = re.match(r'^([^_]+(?:-[^_]+)*)_([^_]+)_([^_]+)_([^_]+)_(\d{4})$', filename)
+        if pattern1:
+            year = int(pattern1.group(5))
+            years.append(year)
+            print(f"   ✅ Extracted year: {year}")
+        else:
+            # Fallback: Look for 4-digit year in filename
+            year_matches = re.findall(r'\b(19|20)\d{2}\b', filename)
+            if year_matches:
+                year = int(year_matches[-1])
+                years.append(year)
+                print(f"   ✅ Found year (fallback): {year}")
+            else:
+                print(f"   ❌ No year found in: {filename}")
 
         # Accumulate file sizes
         if file_path.exists():
