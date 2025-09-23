@@ -307,20 +307,42 @@ def extract_temporal_coverage(dataset):
                 break
 
         if time_coord is not None:
-            # Convert to datetime
-            times = xr.to_datetime(time_coord)
+            try:
+                # Try pandas conversion first
+                import pandas as pd
+                times = pd.to_datetime(time_coord.values)
+                start_time = times.min()
+                end_time = times.max()
 
-            start_time = times.min().values
-            end_time = times.max().values
+                # Convert to ISO format strings
+                if hasattr(start_time, 'isoformat'):
+                    start_str = start_time.isoformat()
+                    end_str = end_time.isoformat()
+                else:
+                    start_str = str(start_time)
+                    end_str = str(end_time)
 
-            # Convert to ISO format strings
-            if hasattr(start_time, 'isoformat'):
-                start_str = start_time.isoformat()
-                end_str = end_time.isoformat()
-            else:
-                # Handle numpy datetime64
-                start_str = str(start_time)
-                end_str = str(end_time)
+            except Exception as e:
+                print(f"   ⚠️ Pandas datetime conversion failed: {e}, trying alternative method")
+                try:
+                    # Fallback: use xarray's native datetime handling
+                    times = time_coord
+                    start_time = times.min().values
+                    end_time = times.max().values
+
+                    # Convert numpy datetime64 to string
+                    if hasattr(start_time, 'astype'):
+                        start_str = str(start_time.astype('datetime64[D]'))
+                        end_str = str(end_time.astype('datetime64[D]'))
+                    else:
+                        start_str = str(start_time)
+                        end_str = str(end_time)
+
+                except Exception as e2:
+                    print(f"   ⚠️ Alternative datetime conversion also failed: {e2}")
+                    # Last resort: use raw values
+                    start_str = str(time_coord.values[0])
+                    end_str = str(time_coord.values[-1])
 
             return {
                 'start': start_str,
@@ -347,18 +369,17 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
     if not first_file_metadata:
         return None
 
-    # Get years from all files in the collection
+    # Get years from all files in the collection (from filenames, not file content)
     years = []
     total_file_size = 0
     temporal_start = None
     temporal_end = None
 
+    import re
     for file_path in netcdf_files:
         # Extract year from filename (assumes format like *_YYYY.nc)
-        year_match = None
         filename = file_path.stem
         # Look for 4-digit year in filename
-        import re
         year_matches = re.findall(r'\b(19|20)\d{2}\b', filename)
         if year_matches:
             years.append(int(year_matches[-1]))  # Take the last 4-digit number as year
@@ -367,15 +388,42 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
         if file_path.exists():
             total_file_size += os.path.getsize(file_path)
 
-        # Get temporal coverage from this file
-        file_metadata = extract_netcdf_metadata(file_path)
-        if file_metadata:
-            if file_metadata.get('temporal_coverage_start'):
-                if not temporal_start or file_metadata['temporal_coverage_start'] < temporal_start:
-                    temporal_start = file_metadata['temporal_coverage_start']
-            if file_metadata.get('temporal_coverage_end'):
-                if not temporal_end or file_metadata['temporal_coverage_end'] > temporal_end:
-                    temporal_end = file_metadata['temporal_coverage_end']
+    # Only read temporal coverage from first and last files (by year) for efficiency
+    if years:
+        years.sort()
+        min_year = min(years)
+        max_year = max(years)
+
+        # Find files corresponding to min and max years
+        first_file = None
+        last_file = None
+
+        for file_path in netcdf_files:
+            filename = file_path.stem
+            year_matches = re.findall(r'\b(19|20)\d{2}\b', filename)
+            if year_matches:
+                year = int(year_matches[-1])
+                if year == min_year and not first_file:
+                    first_file = file_path
+                if year == max_year:
+                    last_file = file_path
+
+        # Extract temporal coverage from first file
+        if first_file:
+            print(f"   📅 Reading temporal coverage from first file: {first_file.name}")
+            first_metadata = extract_netcdf_metadata(first_file)
+            if first_metadata and first_metadata.get('temporal_coverage_start'):
+                temporal_start = first_metadata['temporal_coverage_start']
+
+        # Extract temporal coverage from last file (if different from first)
+        if last_file and last_file != first_file:
+            print(f"   📅 Reading temporal coverage from last file: {last_file.name}")
+            last_metadata = extract_netcdf_metadata(last_file)
+            if last_metadata and last_metadata.get('temporal_coverage_end'):
+                temporal_end = last_metadata['temporal_coverage_end']
+        elif last_file == first_file and first_metadata:
+            # Same file, use end time from first file
+            temporal_end = first_metadata.get('temporal_coverage_end')
 
     years.sort()
     year_range = f"{min(years)}-{max(years)}" if years else "unknown"

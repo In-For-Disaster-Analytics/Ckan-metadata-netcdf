@@ -7,8 +7,10 @@ dependencies:
   - xarray
   - netcdf4
   - numpy
+  - pandas
   - shapely
   - requests
+  - pathlib
   - pip
   - pip:
     - tapipy
