@@ -782,8 +782,28 @@ def main(config_path):
 
                 # Extract year from filename for resource naming
                 import re
-                year_matches = re.findall(r'\b(19|20)\d{2}\b', netcdf_path.stem)
-                year = year_matches[-1] if year_matches else "unknown"
+                filename = netcdf_path.stem
+
+                # Try multiple patterns to extract year
+                year = "unknown"
+
+                # Debug: print the filename we're trying to parse
+                print(f"   🔍 Parsing filename: {filename}")
+
+                # Pattern 1: Standard climate format (model_scenario_variable_resolution_year)
+                pattern1 = re.match(r'^([^_]+(?:-[^_]+)*)_([^_]+)_([^_]+)_([^_]+)_(\d{4})$', filename)
+                if pattern1:
+                    year = pattern1.group(5)  # The year is the 5th group
+                    print(f"   ✅ Pattern 1 matched, year: {year}")
+                else:
+                    print(f"   ❌ Pattern 1 failed")
+                    # Pattern 2: Look for any 4-digit year in the filename
+                    year_matches = re.findall(r'\b(19|20)\d{2}\b', filename)
+                    if year_matches:
+                        year = year_matches[-1]  # Take the last found year
+                        print(f"   ✅ Pattern 2 found year: {year}")
+                    else:
+                        print(f"   ❌ No year found in filename")
 
                 # Get display name for variable
                 variable_display_names = {
