@@ -16,14 +16,6 @@ def authenticate_upstream():
     # Placeholder or external auth, no-op here
     print("✅ Upstream authentication skipped or done externally.")
 
-def get_tapis_token(credentials):
-    t = Tapis(base_url="https://portals.tapis.io",
-              username=credentials['username'],
-              password=credentials['password'])
-    t.get_tokens()
-    print("✅ Tapis authentication successful!")
-    return t.access_token.access_token
-
 def get_headers(jwt_token):
     return {
         "Authorization": f"Bearer {jwt_token}",
@@ -709,16 +701,8 @@ def main(config_path):
     with open(config_path) as f:
         data = json.load(f)
 
-    credentials = {
-        "username": data.get("username"),
-        "password": data.get("password")
-    }
-    if not credentials["username"] or not credentials["password"]:
-        print("❌ Missing username or password in config.json")
-        sys.exit(1)
-
     authenticate_upstream()
-    jwt_token = get_tapis_token(credentials)
+    jwt_token = data.get("api_key"),
 
     # Get directory to search for NetCDF files
     search_directory = data.get("netcdf_directory", ".")
