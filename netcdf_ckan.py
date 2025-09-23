@@ -439,6 +439,7 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
                     last_file = file_path
 
         # Extract temporal coverage from first file
+        first_metadata = None
         if first_file:
             print(f"   📅 Reading temporal coverage from first file: {first_file.name}")
             first_metadata = extract_netcdf_metadata(first_file)
