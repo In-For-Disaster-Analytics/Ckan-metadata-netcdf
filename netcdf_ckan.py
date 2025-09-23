@@ -134,8 +134,9 @@ def organize_netcdf_by_hierarchy(netcdf_files):
         # Try multiple filename patterns
         hierarchy_info = None
 
-        # Pattern 1: EC-Earth3_ssp245_rsds_1km_2018 (model_scenario_variable_resolution_year)
-        pattern1 = re.match(r'^([^_]+)_([^_]+)_([^_]+)_([^_]+)_(\d{4})$', filename)
+        # Pattern 1: EC-Earth3_ssp245_rsds_1km_2018 or BCC-CSM2-MR_ssp126_huss_1km_2015
+        # Handle model names with hyphens by being more flexible
+        pattern1 = re.match(r'^([^_]+(?:-[^_]+)*)_([^_]+)_([^_]+)_([^_]+)_(\d{4})$', filename)
         if pattern1:
             model, scenario, variable, resolution, year = pattern1.groups()
             # Infer frequency from directory or assume 'day' for climate data
@@ -460,15 +461,31 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
         'tasmin': 'Daily Minimum Near-Surface Air Temperature',
         'tasmax': 'Daily Maximum Near-Surface Air Temperature',
         'tas': 'Near-Surface Air Temperature',
-        'pr': 'Precipitation'
+        'pr': 'Precipitation',
+        'huss': 'Near-Surface Specific Humidity',
+        'sfcwind': 'Near-Surface Wind Speed',
+        'rsus': 'Surface Upwelling Shortwave Radiation',
+        'rlds': 'Surface Downwelling Longwave Radiation',
+        'rlus': 'Surface Upwelling Longwave Radiation'
     }
 
     variable_display = variable_display_names.get(variable, variable.upper())
 
+    # Create human-readable frequency name
+    frequency_display_names = {
+        'day': 'daily',
+        'mon': 'monthly',
+        'year': 'yearly',
+        'daily': 'daily',
+        'monthly': 'monthly',
+        'yearly': 'yearly'
+    }
+    frequency_display = frequency_display_names.get(frequency, frequency)
+
     dataset = {
         "name": dataset_name,
-        "title": f"{model} {scenario.upper()} {variable_display} ({frequency}) - {year_range}",
-        "notes": f"{variable_display} data from {model} climate model under {scenario.upper()} scenario. Daily frequency data covering years {year_range}. This dataset contains {len(netcdf_files)} NetCDF files, one for each year.",
+        "title": f"{model} {scenario.upper()} {variable_display} ({frequency_display}) - {year_range}",
+        "notes": f"{variable_display} data from {model} climate model under {scenario.upper()} scenario. {frequency_display.title()} frequency data covering years {year_range}. This dataset contains {len(netcdf_files)} NetCDF files, one for each year.",
         "owner_org": config_data.get("owner_org"),
         "extras": extras
     }
