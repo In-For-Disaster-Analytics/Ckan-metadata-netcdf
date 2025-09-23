@@ -309,30 +309,44 @@ def extract_temporal_coverage(dataset):
 
         if time_coord is not None:
             try:
-                # Try pandas conversion first
-                import pandas as pd
-                times = pd.to_datetime(time_coord.values)
-                start_time = times.min()
-                end_time = times.max()
-
-                # Convert to ISO format strings
-                if hasattr(start_time, 'isoformat'):
-                    start_str = start_time.isoformat()
-                    end_str = end_time.isoformat()
+                # Check if we have cftime objects
+                first_time = time_coord.values[0]
+                if hasattr(first_time, 'strftime'):
+                    # cftime objects - convert directly
+                    start_time = time_coord.values[0]
+                    end_time = time_coord.values[-1]
+                    start_str = start_time.strftime('%Y-%m-%d')
+                    end_str = end_time.strftime('%Y-%m-%d')
                 else:
-                    start_str = str(start_time)
-                    end_str = str(end_time)
+                    # Try pandas conversion for standard datetime
+                    import pandas as pd
+                    times = pd.to_datetime(time_coord.values)
+                    start_time = times.min()
+                    end_time = times.max()
+
+                    # Convert to ISO format strings
+                    if hasattr(start_time, 'isoformat'):
+                        start_str = start_time.isoformat()
+                        end_str = end_time.isoformat()
+                    else:
+                        start_str = str(start_time)
+                        end_str = str(end_time)
 
             except Exception as e:
-                print(f"   ⚠️ Pandas datetime conversion failed: {e}, trying alternative method")
+                print(f"   ⚠️ Datetime conversion failed: {e}, trying alternative method")
                 try:
                     # Fallback: use xarray's native datetime handling
                     times = time_coord
                     start_time = times.min().values
                     end_time = times.max().values
 
-                    # Convert numpy datetime64 to string
-                    if hasattr(start_time, 'astype'):
+                    # Handle different datetime types
+                    if hasattr(start_time, 'strftime'):
+                        # cftime object
+                        start_str = start_time.strftime('%Y-%m-%d')
+                        end_str = end_time.strftime('%Y-%m-%d')
+                    elif hasattr(start_time, 'astype'):
+                        # numpy datetime64
                         start_str = str(start_time.astype('datetime64[D]'))
                         end_str = str(end_time.astype('datetime64[D]'))
                     else:
@@ -445,6 +459,9 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
     if years:
         extras.append({"key": "years_available", "value": ", ".join(map(str, sorted(years)))})
 
+    # Get global attributes early
+    global_attrs = first_file_metadata.get('global_attributes', {})
+
     # Add important global attributes as structured extras
     important_attrs = {
         'activity': 'Activity',
@@ -467,7 +484,7 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
 
     # Add other global attributes with netcdf_ prefix (for less important ones)
     skip_attrs = set(important_attrs.keys()) | {'contact', 'doi', 'version', 'disclaimer', 'references', 'history', 'title', 'source'}
-    for key, value in first_file_metadata.get('global_attributes', {}).items():
+    for key, value in global_attrs.items():
         if key not in skip_attrs and key and value and isinstance(value, (str, int, float)):
             extras.append({"key": f"netcdf_{key}", "value": str(value)})
 
@@ -537,8 +554,7 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
         "extras": extras
     }
 
-    # Extract metadata from global attributes
-    global_attrs = first_file_metadata.get('global_attributes', {})
+    # global_attrs already defined above
 
     # Parse contact field for author and maintainer
     contact = global_attrs.get('contact', '')
