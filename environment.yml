@@ -1,0 +1,14 @@
+name: netcdf-ckan
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - xarray
+  - netcdf4
+  - numpy
+  - shapely
+  - requests
+  - pip
+  - pip:
+    - tapipy
