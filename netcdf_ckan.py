@@ -445,9 +445,30 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
     if years:
         extras.append({"key": "years_available", "value": ", ".join(map(str, sorted(years)))})
 
-    # Add global attributes from first file as extras
+    # Add important global attributes as structured extras
+    important_attrs = {
+        'activity': 'Activity',
+        'institution': 'Institution',
+        'cmip6_source_id': 'CMIP6 Source ID',
+        'cmip6_institution_id': 'CMIP6 Institution ID',
+        'cmip6_license': 'CMIP6 License',
+        'variant_label': 'Variant Label',
+        'resolution_id': 'Resolution',
+        'realm': 'Realm',
+        'tracking_id': 'Tracking ID',
+        'creation_date': 'Creation Date',
+        'external_variables': 'External Variables',
+        'Conventions': 'CF Conventions'
+    }
+
+    for attr_key, display_name in important_attrs.items():
+        if global_attrs.get(attr_key):
+            extras.append({"key": display_name.lower().replace(' ', '_'), "value": str(global_attrs[attr_key])})
+
+    # Add other global attributes with netcdf_ prefix (for less important ones)
+    skip_attrs = set(important_attrs.keys()) | {'contact', 'doi', 'version', 'disclaimer', 'references', 'history', 'title', 'source'}
     for key, value in first_file_metadata.get('global_attributes', {}).items():
-        if key and value and isinstance(value, (str, int, float)):
+        if key not in skip_attrs and key and value and isinstance(value, (str, int, float)):
             extras.append({"key": f"netcdf_{key}", "value": str(value)})
 
     # Add variables information from first file
@@ -482,23 +503,75 @@ def create_dataset_from_netcdf_collection(hierarchy_key, netcdf_files, config_da
     }
     frequency_display = frequency_display_names.get(frequency, frequency)
 
+    # Build comprehensive description
+    description_parts = []
+
+    # Basic description
+    description_parts.append(f"{variable_display} data from {model} climate model under {scenario.upper()} scenario. {frequency_display.title()} frequency data covering years {year_range}. This dataset contains {len(netcdf_files)} NetCDF files, one for each year.")
+
+    # Add variable details from NetCDF metadata
+    if first_file_metadata.get('variables', {}).get(variable, {}).get('attributes', {}).get('comment'):
+        var_comment = first_file_metadata['variables'][variable]['attributes']['comment']
+        description_parts.append(f"\n\nVariable Details: {var_comment}")
+    elif first_file_metadata.get('variables', {}).get(variable, {}).get('attributes', {}).get('long_name'):
+        var_long_name = first_file_metadata['variables'][variable]['attributes']['long_name']
+        description_parts.append(f"\n\nVariable: {var_long_name}")
+
+    # Add disclaimer if present
+    if global_attrs.get('disclaimer'):
+        description_parts.append(f"\n\nDisclaimer: {global_attrs['disclaimer']}")
+
+    # Add references if present
+    if global_attrs.get('references'):
+        description_parts.append(f"\n\nReferences: {global_attrs['references']}")
+
+    # Add processing history if present
+    if global_attrs.get('history'):
+        description_parts.append(f"\n\nProcessing History: {global_attrs['history']}")
+
     dataset = {
         "name": dataset_name,
         "title": f"{model} {scenario.upper()} {variable_display} ({frequency_display}) - {year_range}",
-        "notes": f"{variable_display} data from {model} climate model under {scenario.upper()} scenario. {frequency_display.title()} frequency data covering years {year_range}. This dataset contains {len(netcdf_files)} NetCDF files, one for each year.",
+        "notes": "".join(description_parts),
         "owner_org": config_data.get("owner_org"),
         "extras": extras
     }
 
-    # Add core fields from first file metadata
-    if first_file_metadata.get('author'):
-        dataset["author"] = first_file_metadata['author']
-    if first_file_metadata.get('author_email'):
-        dataset["author_email"] = first_file_metadata['author_email']
-    if first_file_metadata.get('version'):
-        dataset["version"] = first_file_metadata['version']
-    if first_file_metadata.get('source'):
+    # Extract metadata from global attributes
+    global_attrs = first_file_metadata.get('global_attributes', {})
+
+    # Parse contact field for author and maintainer
+    contact = global_attrs.get('contact', '')
+    if contact:
+        # Parse contact like "Dr. Geeta Persad: geeta.persad@jsg.utexas.edu, Dr. Ifeanyichukwu Nduka: icnduka@jsg.utexas.edu"
+        import re
+        contact_parts = contact.split(',')
+        if len(contact_parts) >= 1:
+            # Extract first contact as author
+            first_contact = contact_parts[0].strip()
+            author_match = re.match(r'^([^:]+):\s*(.+)$', first_contact)
+            if author_match:
+                dataset["author"] = author_match.group(1).strip()
+                dataset["author_email"] = author_match.group(2).strip()
+        if len(contact_parts) >= 2:
+            # Extract second contact as maintainer
+            second_contact = contact_parts[1].strip()
+            maintainer_match = re.match(r'^([^:]+):\s*(.+)$', second_contact)
+            if maintainer_match:
+                dataset["maintainer"] = maintainer_match.group(1).strip()
+                dataset["maintainer_email"] = maintainer_match.group(2).strip()
+
+    # Use DOI as source if available
+    if global_attrs.get('doi'):
+        dataset["source"] = global_attrs['doi']
+    elif first_file_metadata.get('source'):
         dataset["source"] = first_file_metadata['source']
+
+    # Use version from global attributes
+    if global_attrs.get('version'):
+        dataset["version"] = global_attrs['version']
+    elif first_file_metadata.get('version'):
+        dataset["version"] = first_file_metadata['version']
 
     # Add spatial coverage from first file if available
     if first_file_metadata.get('spatial_coverage'):
