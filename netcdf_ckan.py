@@ -793,8 +793,9 @@ def main(config_path):
             # Create resources for each file in the group
             print(f"📤 Adding {len(file_group)} NetCDF resource references...")
             for netcdf_path in file_group:
-                relative_path = netcdf_path.relative_to(search_directory)
-                resource_url = TACC_BASE_URL + str(relative_path).replace('\\', '/')
+                # Construct URL using hierarchical structure: model/scenario/frequency/variable/filename
+                filename = netcdf_path.name
+                resource_url = f"{TACC_BASE_URL}{model}/{scenario}/{frequency}/{variable}/{filename}"
 
                 # Extract year from filename for resource naming
                 import re
@@ -887,8 +888,19 @@ def main(config_path):
             print(f"✅ Dataset ready with ID: {pkg['id']}")
 
             # Create resource reference to the NetCDF file
+            # Try to extract hierarchy from path for URL construction
+            filename = netcdf_path.name
             relative_path = netcdf_path.relative_to(search_directory)
-            resource_url = TACC_BASE_URL + str(relative_path).replace('\\', '/')
+
+            # Try to construct hierarchical URL if possible
+            path_parts = relative_path.parts
+            if len(path_parts) >= 4:
+                # Assume structure: model/scenario/frequency/variable/filename
+                model_dir, scenario_dir, freq_dir, var_dir = path_parts[-5:-1] if len(path_parts) >= 5 else path_parts[-4:]
+                resource_url = f"{TACC_BASE_URL}{model_dir}/{scenario_dir}/{freq_dir}/{var_dir}/{filename}"
+            else:
+                # Fallback to simple concatenation
+                resource_url = TACC_BASE_URL + str(relative_path).replace('\\', '/')
 
             resource = {
                 "url": resource_url,
